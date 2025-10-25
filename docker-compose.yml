@@ -1,0 +1,97 @@
+version: '3.8'
+
+x-panel-environment: &panel-environment
+  APP_URL: "https://${CODESPACE_NAME}-80.app.github.dev"
+  APP_TIMEZONE: "UTC"
+
+x-mail-environment: &mail-environment
+  MAIL_DRIVER: "log"
+  MAIL_HOST: "smtp.mailtrap.io"
+  MAIL_PORT: "2525"
+  MAIL_USERNAME: ""
+  MAIL_PASSWORD: ""
+  MAIL_FROM: "noreply@example.com"
+
+x-db-password: &db-password "pterodactyl_password_123"
+
+services:
+  database:
+    image: mariadb:10.5
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: *db-password
+      MYSQL_DATABASE: panel
+      MYSQL_USER: pterodactyl
+      MYSQL_PASSWORD: *db-password
+    volumes:
+      - "mysql_data:/var/lib/mysql"
+    networks:
+      - pterodactyl
+
+  cache:
+    image: redis:alpine
+    restart: always
+    networks:
+      - pterodactyl
+
+  panel:
+    image: ghcr.io/pterodactyl/panel:latest
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - database
+      - cache
+    volumes:
+      - "panel_var:/app/var/"
+      - "panel_nginx:/etc/nginx/http.d/"
+      - "panel_logs:/app/storage/logs"
+    environment:
+      <<: [*panel-environment, *mail-environment]
+      DB_PASSWORD: *db-password
+      APP_ENV: "production"
+      APP_ENVIRONMENT_ONLY: "false"
+      CACHE_DRIVER: "redis"
+      SESSION_DRIVER: "redis"
+      QUEUE_DRIVER: "redis"
+      REDIS_HOST: "cache"
+      DB_HOST: "database"
+      DB_PORT: "3306"
+    networks:
+      - pterodactyl
+
+  wings:
+    image: ghcr.io/pterodactyl/wings:latest
+    restart: always
+    networks:
+      - pterodactyl
+    ports:
+      - "8080:8080"
+      - "2022:2022"
+    tty: true
+    environment:
+      TZ: "UTC"
+      WINGS_UID: 988
+      WINGS_GID: 988
+      WINGS_USERNAME: pterodactyl
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "wings_data:/var/lib/pterodactyl/"
+      - "wings_logs:/var/log/pterodactyl/"
+      - "wings_config:/etc/pterodactyl/"
+    networks:
+      - pterodactyl
+
+networks:
+  pterodactyl:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  panel_var:
+  panel_nginx:
+  panel_logs:
+  wings_data:
+  wings_logs:
+  wings_config:
